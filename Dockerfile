@@ -1,49 +1,61 @@
 # inspired by https://github.com/hauptmedia/docker-jmeter  and
 # https://github.com/hhcordero/docker-jmeter-server/blob/master/Dockerfile
-# and 
+# and
 # https://github.com/fgrehm/docker-netbeans/blob/master/Dockerfile
-
-# Docker run with 
-# 
-# 
+# and
+# https://github.com/justb4/docker-jmeter
+#
+# Docker run with (follow steps from README.md on mac first
+#
 # docker run --rm -it  \
-# 	--name jmeter \
-# 	-e DISPLAY=$DISPLAY \
-# 	-v /tmp/.X11-unix:/tmp/.X11-unix \
-# 	-v /tmp:/tmp \
-# 	-v $HOME/.Xauthority:/root/.Xauthority \
-# 	-w /tmp \
-# 	symbiote/jmeter:3.3
-# 
+#   --name jmeter \
+#   -e DISPLAY=$DISPLAY \
+#   -v /tmp/.X11-unix:/tmp/.X11-unix \
+#   -v /tmp:/tmp \
+#   -v $HOME/.Xauthority:/root/.Xauthority \
+#   -w /tmp \
+#   symbiote/jmeter:5.1
+#
+FROM alpine:3.11
 
-FROM ubuntu:16.04
-
-ARG JMETER_VERSION="3.3"
+ARG JMETER_VERSION="5.1.1"
 ENV JMETER_HOME /opt/apache-jmeter-${JMETER_VERSION}
-ENV	JMETER_BIN	${JMETER_HOME}/bin
-ENV	JMETER_DOWNLOAD_URL  https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-${JMETER_VERSION}.tgz
+ENV JMETER_BIN ${JMETER_HOME}/bin
+ENV JMETER_DOWNLOAD_URL https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-${JMETER_VERSION}.tgz
 
+# See https://github.com/gliderlabs/docker-alpine/issues/136#issuecomment-272703023
+# Change TimeZone TODO: TZ still is not set!
 ARG TZ="Australia/Melbourne"
 
-
-RUN sed 's/main$/main universe/' -i /etc/apt/sources.list && \
-    apt-get update && apt-get install -y software-properties-common && \
-    add-apt-repository ppa:webupd8team/java -y && \
-    apt-get update && \
-    echo oracle-java8-installer shared/accepted-oracle-license-v1-1 select true | /usr/bin/debconf-set-selections && \
-    apt-get install -y oracle-java8-installer libxext-dev libxrender-dev libxtst-dev curl unzip && \
-    apt-get clean && \
+RUN apk update && \
+    apk upgrade && \
+    apk add ca-certificates && \
+    update-ca-certificates && \
+    apk add --update \
+        bash \
+        curl \
+        openjdk8-jre \
+        # `ttf-dejavu` is required on macOS:
+        # https://github.com/docker-library/openjdk/issues/73
+        ttf-dejavu \
+        tzdata \
+        unzip \
+        && \
+    apk add --no-cache nss && \
+    rm -rf /var/cache/apk/* && \
     mkdir -p /tmp/dependencies && \
-    curl -L --silent ${JMETER_DOWNLOAD_URL} >  /tmp/dependencies/apache-jmeter-${JMETER_VERSION}.tgz  && \ 
+    #
+    # Install jmeter
+    echo "Downloading jmeter ${JMETER_VERSION}, this might take a while ..." && \
+    curl -L --silent ${JMETER_DOWNLOAD_URL} > /tmp/dependencies/apache-jmeter-${JMETER_VERSION}.tgz && \
     mkdir -p /opt && \
     tar -xzf /tmp/dependencies/apache-jmeter-${JMETER_VERSION}.tgz -C /opt && \
-    rm -rf /var/lib/apt/lists/* && \
-    rm -rf /tmp/*
-
-
-RUN curl https://jmeter-plugins.org/files/packages/jpgc-casutg-2.5.zip > /tmp/jpgc-casutg-2.5.zip && \
-    unzip -oq /tmp/jpgc-casutg-2.5.zip -d $JMETER_HOME && \
-    curl https://jmeter-plugins.org/files/packages/jpgc-graphs-basic-2.0.zip > /tmp/jpgc-graphs-basic-2.0.zip && \
+    rm -rf /tmp/dependencies && \
+    #
+    # Install jmeter plugins
+    curl --silent https://jmeter-plugins.org/files/packages/jpgc-casutg-2.9.zip > /tmp/jpgc-casutg-2.9.zip && \
+    unzip -oq /tmp/jpgc-casutg-2.9.zip -d $JMETER_HOME && \
+    curl --silent https://jmeter-plugins.org/files/packages/jpgc-graphs-basic-2.0.zip > /tmp/jpgc-graphs-basic-2.0.zip && \
     unzip -oq /tmp/jpgc-graphs-basic-2.0.zip -d $JMETER_HOME && \
     rm -rf /tmp/*
 
@@ -57,13 +69,11 @@ RUN mkdir -p /home/developer && mkdir -p /etc/sudoers.d && \
     echo "developer ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/developer && \
     chmod 0440 /etc/sudoers.d/developer && \
     echo "proxy.cert.directory=/tmp" >> ${JMETER_HOME}/bin/user.properties && \
-    chown developer:developer -R /home/developer
+    chown developer:developer -R /home/developer $JMETER_HOME
 
-
-WORKDIR	${JMETER_HOME}
+WORKDIR ${JMETER_HOME}
 
 USER developer
 ENV HOME /home/developer
 
 CMD ${JMETER_BIN}/jmeter
-
